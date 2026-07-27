@@ -74,10 +74,10 @@ source "$VENV_DIR/bin/activate"
 # 5. Atualiza pip/setuptools/wheel e instala as dependências
 # ---------------------------------------------------------------------------
 log "Atualizando pip, setuptools e wheel..."
-python -m pip install --upgrade pip setuptools wheel
+python3 -m pip3 install --upgrade pip setuptools wheel
 
 log "Instalando dependências de $REQ_FILE..."
-python -m pip install -r "$REQ_FILE"
+python3 -m pip3 install -r "$REQ_FILE"
 
 log "Instalação concluída com sucesso!"
 echo
