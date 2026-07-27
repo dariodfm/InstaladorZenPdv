@@ -1,0 +1,14 @@
+Flask==3.1.3
+Werkzeug==3.1.8
+Pillow==12.3.0
+lxml==6.1.1
+cryptography==49.0.0
+pynfe==0.6.5
+qrcode==8.2
+requests==2.34.2
+signxml==5.1.0
+
+# Driver do PostgreSQL (necessário apenas quando PDV_DB_ENGINE=postgres).
+# A versão "binary" já vem com as dependências nativas compiladas, não
+# precisa de libpq-dev/gcc instalados na máquina.
+psycopg2-binary==2.9.10
