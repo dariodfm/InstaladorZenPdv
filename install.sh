@@ -1,85 +1,86 @@
 #!/usr/bin/env bash
 #
-# install.sh
-# Cria (ou reutiliza) um ambiente virtual Python 3.12 e instala as
-# dependências listadas em requirements.txt.
+# install_zenpdv.sh
+# Instala dependências do sistema, clona o repositório ZenPdv,
+# cria o ambiente virtual Python, instala as dependências do
+# requirements.txt e configura o app.py como serviço systemd.
 #
 # Uso:
-#   chmod +x install.sh
-#   ./install.sh
+#   sudo bash install_zenpdv.sh
 #
-# Variáveis opcionais:
-#   VENV_DIR   -> diretório do virtualenv (padrão: .venv)
-#   REQ_FILE   -> caminho do requirements.txt (padrão: requirements.txt)
-
 set -euo pipefail
 
-VENV_DIR="${VENV_DIR:-.venv}"
-REQ_FILE="${REQ_FILE:-requirements.txt}"
-PYTHON_BIN="${PYTHON_BIN:-python3.12}"
-
-log() { printf '\n\033[1;32m[install]\033[0m %s\n' "$1"; }
-err() { printf '\n\033[1;31m[erro]\033[0m %s\n' "$1" >&2; }
+# ---------------------------------------------------------------------------
+# Configurações (ajuste conforme necessário)
+# ---------------------------------------------------------------------------
+REPO_URL="https://github.com/dariodfm/ZenPdv"
+INSTALL_DIR="/opt/ZenPdv"
+SERVICE_NAME="zenpdv"
+SERVICE_USER="${SUDO_USER:-$(whoami)}"
+PYTHON_BIN="python3"
+VENV_DIR="${INSTALL_DIR}/venv"
+APP_ENTRY="app.py"
 
 # ---------------------------------------------------------------------------
-# 1. Verifica se o Python 3.12 está instalado
+# 0. Precisa ser root (sudo)
 # ---------------------------------------------------------------------------
-if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-    err "$PYTHON_BIN não encontrado no PATH."
-    echo "Instale o Python 3.12 antes de continuar. Exemplos:"
-    echo "  Ubuntu/Debian:"
-    echo "    sudo add-apt-repository ppa:deadsnakes/ppa"
-    echo "    sudo apt update"
-    echo "    sudo apt install python3.12 python3.12-venv python3.12-dev"
-    echo "  macOS (Homebrew):"
-    echo "    brew install python@3.12"
-    exit 1
+if [[ $EUID -ne 0 ]]; then
+  echo "Este script precisa ser executado com sudo. Ex: sudo bash $0"
+  exit 1
 fi
 
-PY_VERSION="$("$PYTHON_BIN" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
-log "Usando $PYTHON_BIN (versão $PY_VERSION)"
+echo "==> 1/6 Atualizando repositórios e instalando dependências de sistema..."
+apt update
+apt install -y \
+  git \
+  python3 \
+  python3-venv \
+  python3-pip \
+  libpq-dev \
+  python3-dev \
+  build-essential
 
-# ---------------------------------------------------------------------------
-# 2. Verifica se o requirements.txt existe
-# ---------------------------------------------------------------------------
-if [ ! -f "$REQ_FILE" ]; then
-    err "Arquivo '$REQ_FILE' não encontrado no diretório atual ($(pwd))."
-    exit 1
-fi
-
-# ---------------------------------------------------------------------------
-# 3. (Opcional/Linux) Aviso sobre bibliotecas nativas para lxml/cryptography
-# ---------------------------------------------------------------------------
-if [ "$(uname -s)" = "Linux" ]; then
-    log "Dica: lxml, cryptography e signxml podem exigir libs nativas de sistema."
-    echo "  Se a instalação falhar ao compilar, instale antes (Debian/Ubuntu):"
-    echo "    sudo apt install -y build-essential libxml2-dev libxslt1-dev \\"
-    echo "        libssl-dev libffi-dev zlib1g-dev libjpeg-dev"
-fi
-
-# ---------------------------------------------------------------------------
-# 4. Cria o virtualenv (se ainda não existir)
-# ---------------------------------------------------------------------------
-if [ -d "$VENV_DIR" ]; then
-    log "Virtualenv '$VENV_DIR' já existe, reutilizando."
+echo "==> 2/6 Clonando o repositório ZenPdv em ${INSTALL_DIR}..."
+if [[ -d "${INSTALL_DIR}/.git" ]]; then
+  echo "Repositório já existe em ${INSTALL_DIR}, atualizando (git pull)..."
+  git -C "${INSTALL_DIR}" pull
 else
-    log "Criando virtualenv em '$VENV_DIR'..."
-    "$PYTHON_BIN" -m venv "$VENV_DIR"
+  git clone "${REPO_URL}" "${INSTALL_DIR}"
 fi
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
-# shellcheck disable=SC1090
-source "$VENV_DIR/bin/activate"
+echo "==> 3/6 Criando ambiente virtual Python em ${VENV_DIR}..."
+sudo -u "${SERVICE_USER}" "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 
-# ---------------------------------------------------------------------------
-# 5. Atualiza pip/setuptools/wheel e instala as dependências
-# ---------------------------------------------------------------------------
-log "Atualizando pip, setuptools e wheel..."
-python3 -m pip install --upgrade pip setuptools wheel
+echo "==> 4/6 Instalando dependências do requirements.txt..."
+sudo -u "${SERVICE_USER}" "${VENV_DIR}/bin/pip" install --upgrade pip
+sudo -u "${SERVICE_USER}" "${VENV_DIR}/bin/pip" install -r "${INSTALL_DIR}/requirements.txt"
 
-log "Instalando dependências de $REQ_FILE..."
-python3 -m pip install -r "$REQ_FILE"
+echo "==> 5/6 Criando serviço systemd (${SERVICE_NAME}.service)..."
+cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
+[Unit]
+Description=ZenPdv - Serviço app.py
+After=network.target
 
-log "Instalação concluída com sucesso!"
-echo
-echo "Para ativar o ambiente virtual em novas sessões, use:"
-echo "  source $VENV_DIR/bin/activate"
+[Service]
+Type=simple
+User=${SERVICE_USER}
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=${VENV_DIR}/bin/python ${INSTALL_DIR}/${APP_ENTRY}
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+echo "==> 6/6 Ativando e iniciando o serviço..."
+systemctl daemon-reload
+systemctl enable "${SERVICE_NAME}"
+systemctl restart "${SERVICE_NAME}"
+
+echo ""
+echo "Instalação concluída."
+echo "Verifique o status com: sudo systemctl status ${SERVICE_NAME}"
+echo "Acompanhe os logs com:  sudo journalctl -u ${SERVICE_NAME} -f"
