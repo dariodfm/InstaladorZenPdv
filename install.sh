@@ -49,6 +49,11 @@ else
 fi
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
+echo "==> Removendo diretório 'venv' que veio junto do repositório (se existir)..."
+if [[ -d "${INSTALL_DIR}/venv" ]]; then
+  rm -rf "${INSTALL_DIR}/venv"
+fi
+
 echo "==> 3/6 Criando ambiente virtual Python em ${VENV_DIR}..."
 sudo -u "${SERVICE_USER}" "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 

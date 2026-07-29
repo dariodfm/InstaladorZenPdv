@@ -11,4 +11,5 @@ signxml==5.1.0
 # Driver do PostgreSQL (necessário apenas quando PDV_DB_ENGINE=postgres).
 # A versão "binary" já vem com as dependências nativas compiladas, não
 # precisa de libpq-dev/gcc instalados na máquina.
+
 psycopg2-binary==2.9.10
